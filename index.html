@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jump Cartoon Game</title>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+    user-select: none;
+    font-family: sans-serif;
+    height: 100vh;
+  }
+  canvas {
+    display: block;
+  }
+  #scoreDisplay {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: #fff;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 1px 1px #000;
+    display: none;
+  }
+  #gameOver {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    color: rgb(0, 0, 0);
+    font-size: 36px;
+    font-weight: bold;
+    display: none;
+    text-align: center;
+  }
+  #readyScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: rgb(0, 0, 0);
+    font-size: 36px;
+    font-weight: bold;
+    text-align: center;
+    user-select: none;
+  }
+  #readyScreen img {
+    margin-top: 20px;
+    width: 150px;
+    height: auto;
+  }
+  #controlPanel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+  }
+  #toggleBtn {
+    font-size: 16px;
+    padding: 8px 16px;
+    cursor: pointer;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+
+<div id="readyScreen">
+  <div>Get Ready!<br>Press Space or Click to Start</div>
+  <img id="readyPlayer" src="" alt="Player Character" />
+</div>
+
+
+<div id="scoreDisplay">Score: 0</div>
+<div id="gameOver">Game Over<br>Tap/Space to Restart</div>
+
+
+<div id="controlPanel">
+  <button id="toggleBtn">Pause</button>
+</div>
+
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const gameOverDisplay = document.getElementById('gameOver');
+const readyScreen = document.getElementById('readyScreen');
+const readyPlayerImg = document.getElementById('readyPlayer');
+const toggleBtn = document.getElementById('toggleBtn');
+
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
+
+
+const gravity = 0.4;
+const jumpStrength = -12;
+let score = 0;
+let gameRunning = false;
+let gamePaused = false;
+let speedMultiplier = 1;
+let lastScoreForSpeedUp = 0;
+
+
+const jumpSound = new Audio('jump.mp3');       // ไฟล์เสียงกระโดด
+const gameOverSound = new Audio('gameover.mp3'); // ไฟล์เสียงเกมจบ
+
+
+const backgroundImg = new Image();
+backgroundImg.src = 'bg.png';
+
+
+const playerImg = new Image();
+playerImg.src = 'caragter.png';
+
+
+const obstacleImg = new Image();
+obstacleImg.src = 'block.png';
+
+
+class Player {
+  constructor() {
+    this.w = 100;
+    this.h = 100;
+    this.x = 50;
+    this.y = height - this.h - 50;
+    this.vy = 0;
+    this.onGround = true;
+    this.jumpCount = 0;
+  }
+  draw() {
+    ctx.drawImage(playerImg, this.x, this.y, this.w, this.h);
+  }
+  update() {
+    this.vy += gravity;
+    this.y += this.vy;
+    if (this.y >= height - this.h - 50) {
+      this.y = height - this.h - 50;
+      this.vy = 0;
+      this.onGround = true;
+      this.jumpCount = 0;
+    }
+  }
+  jump() {
+    if (this.onGround || this.jumpCount < 1) {
+      this.vy = jumpStrength;
+      this.onGround = false;
+      this.jumpCount++;
+      jumpSound.currentTime = 0;
+      jumpSound.play();
+    }
+  }
+}
+
+
+class Obstacle {
+  constructor() {
+    this.w = 60;
+    this.h = 90;
+    this.x = width;
+    this.y = height - this.h - 50;
+    this.baseSpeed = 5;
+    this.speed = this.baseSpeed * speedMultiplier;
+  }
+  draw() {
+    ctx.drawImage(obstacleImg, this.x, this.y, this.w, this.h);
+  }
+  update() {
+    this.x -= this.speed;
+  }
+}
+
+
+const player = new Player();
+const obstacles = [];
+
+
+let lastSpawnTime = 0;
+const minSpawnInterval = 3500; // 3.5 วินาที ขั้นต่ำระหว่างสิ่งกีดขวาง
+
+
+function spawnObstacle() {
+  if (!gameRunning || gamePaused) return;
+
+
+  const now = performance.now();
+
+
+  if (obstacles.length > 0) {
+    const last = obstacles[obstacles.length - 1];
+    if (last.x > width - 300 || (now - lastSpawnTime) < minSpawnInterval) {
+      setTimeout(spawnObstacle, 200);
+      return;
+    }
+  } else if ((now - lastSpawnTime) < minSpawnInterval) {
+    setTimeout(spawnObstacle, 200);
+    return;
+  }
+
+
+  obstacles.push(new Obstacle());
+  lastSpawnTime = now;
+
+
+  const nextSpawnIn = Math.random() * 2500 + 3500; // 3.5 - 6 วินาที
+  setTimeout(spawnObstacle, nextSpawnIn);
+}
+
+
+function resetGame() {
+  gameRunning = true;
+  gamePaused = false;
+  gameOverDisplay.style.display = 'none';
+  toggleBtn.style.display = 'inline-block';
+  toggleBtn.textContent = 'Pause';
+  scoreDisplay.style.display = 'block';
+  readyScreen.style.display = 'none';
+  obstacles.length = 0;
+  score = 0;
+  speedMultiplier = 1;
+  lastScoreForSpeedUp = 0;
+  scoreDisplay.textContent = 'Score: 0';
+  player.y = height - player.h - 50;
+  player.vy = 0;
+  player.jumpCount = 0;
+  spawnObstacle();
+  animate();
+}
+
+
+function detectCollision(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+
+function animate() {
+  if (!gameRunning || gamePaused) return;
+
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(backgroundImg, 0, 0, width, height);
+
+
+  player.update();
+  player.draw();
+
+
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    obstacles[i].speed = obstacles[i].baseSpeed * speedMultiplier;
+    obstacles[i].update();
+    obstacles[i].draw();
+
+
+    if (detectCollision(player, obstacles[i])) {
+      gameRunning = false;
+      gameOverDisplay.style.display = 'block';
+      toggleBtn.textContent = 'Restart';
+
+
+      gameOverSound.currentTime = 0;
+      gameOverSound.play();
+
+
+      return;
+    }
+
+
+    if (obstacles[i].x + obstacles[i].w < 0) {
+      obstacles.splice(i, 1);
+      score++;
+      scoreDisplay.textContent = 'Score: ' + score;
+
+
+      if (score % 10 === 0 && score !== 0 && lastScoreForSpeedUp !== score) {
+        speedMultiplier *= 1.1;
+        lastScoreForSpeedUp = score;
+      }
+    }
+  }
+
+
+  requestAnimationFrame(animate);
+}
+
+
+toggleBtn.addEventListener('click', () => {
+  if (!gameRunning) {
+    resetGame();
+    return;
+  }
+  if (gamePaused) {
+    gamePaused = false;
+    toggleBtn.textContent = 'Pause';
+    animate();
+  } else {
+    gamePaused = true;
+    toggleBtn.textContent = 'Resume';
+  }
+});
+
+
+function startGame() {
+  if (!gameRunning) {
+    resetGame();
+  }
+}
+
+
+// เริ่มเกมเมื่อกด Space หรือคลิก ตอนหน้า ready
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    if (!gameRunning) {
+      startGame();
+    } else if (!gamePaused) {
+      player.jump();
+    }
+  }
+});
+
+
+canvas.addEventListener('click', () => {
+  if (!gameRunning) {
+    startGame();
+  } else if (!gamePaused) {
+    player.jump();
+  }
+});
+
+
+window.addEventListener('resize', () => {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+});
+
+
+// โหลดภาพพร้อมตั้ง ready screen
+let imagesLoaded = 0;
+[playerImg, obstacleImg, backgroundImg].forEach(img => {
+  img.onload = () => {
+    imagesLoaded++;
+    if (imagesLoaded === 3) {
+      readyScreen.style.backgroundImage = `url('${backgroundImg.src}')`;
+      readyPlayerImg.src = playerImg.src;
+
+
+      readyScreen.style.display = 'flex';
+      scoreDisplay.style.display = 'none';
+      toggleBtn.style.display = 'none';
+    }
+  };
+});
+</script>
+</body>
+</html>
+
+
+
+
